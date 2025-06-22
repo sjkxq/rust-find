@@ -71,7 +71,7 @@ pub fn find_files<P: AsRef<Path>>(
         results
     };
 
-    // Apply name pattern filtering if specified
+    // 如果指定了名称模式过滤条件，则应用过滤
     if !options.name_patterns.is_empty() {
         results = results.into_iter().filter(|path| {
             if let Some(file_name) = path.file_name() {
@@ -152,16 +152,22 @@ fn parallel_traverse_impl(
     let entries = match std::fs::read_dir(path) {
         Ok(entries) => entries,
         Err(e) => {
-            return Err(FindError::FilesystemError(e, path.to_path_buf()));
+            return Err(FindError::FilesystemError {
+                source: e,
+                path: path.to_path_buf()
+            });
         }
     };
 
-    // Process entries in parallel
+    // 并行处理目录条目
     entries.par_bridge().for_each_with(sender.clone(), |s, entry| {
         let entry = match entry {
             Ok(entry) => entry,
             Err(e) => {
-                let _ = s.send(Err(FindError::FilesystemError(e, path.to_path_buf())));
+                let _ = s.send(Err(FindError::FilesystemError {
+                    source: e,
+                    path: path.to_path_buf()
+                }));
                 return;
             }
         };
@@ -249,7 +255,10 @@ fn traverse_directory(
         Ok(entries) => entries,
         Err(e) => {
             error!("Error reading directory {}: {}", path.display(), e);
-                                return Err(FindError::FilesystemError(e, path.to_path_buf()));
+            return Err(FindError::FilesystemError {
+                source: e,
+                path: path.to_path_buf()
+            });
         }
     };
 

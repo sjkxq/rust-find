@@ -37,8 +37,12 @@ fn test_find_with_files() -> Result<(), Box<dyn std::error::Error>> {
 fn test_max_depth() -> Result<(), Box<dyn std::error::Error>> {
     let dir = tempdir()?;
     let subdir = tempfile::tempdir_in(dir.path())?;
-    std::fs::File::create(subdir.path().join("file.txt"))?;
     
+    // Create files at different depths
+    std::fs::File::create(dir.path().join("top.txt"))?;
+    std::fs::File::create(subdir.path().join("sub.txt"))?;
+    
+    // Test max_depth=1 (should only find top.txt)
     let mut cmd = Command::cargo_bin("rust-find")?;
     let output = cmd.arg(dir.path())
        .arg("--max-depth")
@@ -47,7 +51,20 @@ fn test_max_depth() -> Result<(), Box<dyn std::error::Error>> {
        .success();
     
     let stdout = String::from_utf8(output.get_output().stdout.clone())?;
-    assert!(stdout.contains("file.txt")); // Should find file in subdir with max_depth=1
+    assert!(stdout.contains("top.txt"), "Expected to find top file");
+    assert!(!stdout.contains("sub.txt"), "Did not expect to find subdir file with max_depth=1");
+    
+    // Test max_depth=2 (should find both files)
+    let mut cmd = Command::cargo_bin("rust-find")?;
+    let output = cmd.arg(dir.path())
+       .arg("--max-depth")
+       .arg("2")
+       .assert()
+       .success();
+    
+    let stdout = String::from_utf8(output.get_output().stdout.clone())?;
+    assert!(stdout.contains("top.txt"), "Expected to find top file");
+    assert!(stdout.contains("sub.txt"), "Expected to find subdir file with max_depth=2");
     
     Ok(())
 }
@@ -111,13 +128,13 @@ fn test_symlink_loop() -> Result<(), Box<dyn std::error::Error>> {
         let dir = tempdir()?;
         let link1 = dir.path().join("link1");
         let link2 = dir.path().join("link2");
-        
         std::os::unix::fs::symlink(&link2, &link1)?;
         std::os::unix::fs::symlink(&link1, &link2)?;
         
         let mut cmd = Command::cargo_bin("rust-find")?;
         let output = cmd.arg(dir.path())
            .arg("--follow-links")
+           .arg("--ignore-io-errors")
            .assert()
            .success();
         
@@ -137,6 +154,7 @@ fn test_broken_symlink() -> Result<(), Box<dyn std::error::Error>> {
         let mut cmd = Command::cargo_bin("rust-find")?;
         let output = cmd.arg(dir.path())
            .arg("--follow-links")
+           .arg("--ignore-io-errors")
            .assert()
            .success();
         

@@ -3,6 +3,9 @@ use std::path::PathBuf;
 use std::time::SystemTime;
 use walkdir;
 
+/// Result type for operations that can produce FindError
+pub type FindResult<T> = Result<T, FindError>;
+
 /// rust-find 的自定义错误类型
 #[derive(Debug)]
 pub enum FindError {
@@ -19,7 +22,10 @@ pub enum FindError {
     SymlinkIssue(PathBuf),
     
     /// 文件系统错误（其他IO错误）
-    FilesystemError(std::io::Error, PathBuf),
+    FilesystemError {
+        source: std::io::Error,
+        path: PathBuf,
+    },
     
     /// 指定的路径无效
     InvalidPath(PathBuf),
@@ -30,6 +36,17 @@ pub enum FindError {
         context: Option<String>,
         timestamp: SystemTime,
     },
+
+    /// 模式匹配错误
+    PatternError {
+        message: String,
+    },
+
+    /// 无效的文件类型
+    InvalidFileType(String),
+
+    /// 遍历目录时的错误
+    WalkDirError(String),
 }
 
 impl fmt::Display for FindError {
@@ -43,8 +60,8 @@ impl fmt::Display for FindError {
                 write!(f, "Cannot read directory: {}", path.display()),
             FindError::SymlinkIssue(path) => 
                 write!(f, "Symbolic link issue with: {}", path.display()),
-            FindError::FilesystemError(e, path) => 
-                write!(f, "Filesystem error at {}: {}", path.display(), e),
+            FindError::FilesystemError { source, path } => 
+                write!(f, "Filesystem error at {}: {}", path.display(), source),
             FindError::InvalidPath(path) => 
                 write!(f, "Invalid path: {}", path.display()),
             FindError::Other { message, context, .. } => {
@@ -53,7 +70,13 @@ impl fmt::Display for FindError {
                     write!(f, " (context: {})", ctx)?;
                 }
                 Ok(())
-            }
+            },
+            FindError::PatternError { message } => 
+                write!(f, "Pattern error: {}", message),
+            FindError::InvalidFileType(type_code) => 
+                write!(f, "Invalid file type: {}", type_code),
+            FindError::WalkDirError(message) => 
+                write!(f, "Directory traversal error: {}", message)
         }
     }
 }
@@ -61,7 +84,7 @@ impl fmt::Display for FindError {
 impl std::error::Error for FindError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            FindError::FilesystemError(e, _) => Some(e),
+            FindError::FilesystemError { source, .. } => Some(source),
             _ => None,
         }
     }
@@ -74,7 +97,10 @@ impl From<std::io::Error> for FindError {
                 FindError::FileNotFound(PathBuf::new()),
             std::io::ErrorKind::PermissionDenied => 
                 FindError::PermissionDenied(PathBuf::new()),
-            _ => FindError::FilesystemError(err, PathBuf::new()),
+            _ => FindError::FilesystemError {
+                source: err,
+                path: PathBuf::new(),
+            },
         }
     }
 }
@@ -86,16 +112,12 @@ impl From<walkdir::Error> for FindError {
             Some(io_err) => match io_err.kind() {
                 std::io::ErrorKind::NotFound => FindError::FileNotFound(path),
                 std::io::ErrorKind::PermissionDenied => FindError::PermissionDenied(path),
-                _ => FindError::FilesystemError(
-                    std::io::Error::new(io_err.kind(), io_err.to_string()),
+                _ => FindError::FilesystemError {
+                    source: std::io::Error::new(io_err.kind(), io_err.to_string()),
                     path
-                ),
+                },
             },
-            None => FindError::Other {
-                message: err.to_string(),
-                context: Some("walkdir error".to_string()),
-                timestamp: SystemTime::now(),
-            },
+            None => FindError::WalkDirError(err.to_string()),
         }
     }
 }
@@ -107,8 +129,12 @@ mod tests {
 
     #[test]
     fn test_filesystem_error_display() {
+        // 测试文件系统错误的显示格式
         let io_error = io::Error::new(io::ErrorKind::NotFound, "file not found");
-        let find_error = FindError::FilesystemError(io_error, PathBuf::from("/test/path"));
+        let find_error = FindError::FilesystemError {
+            source: io_error,
+            path: PathBuf::from("/test/path")
+        };
         assert_eq!(
             find_error.to_string(),
             "Filesystem error at /test/path: file not found"
@@ -117,6 +143,7 @@ mod tests {
 
     #[test]
     fn test_invalid_path_display() {
+        // 测试无效路径错误的显示格式
         let find_error = FindError::InvalidPath(PathBuf::from("/invalid/path"));
         assert_eq!(find_error.to_string(), "Invalid path: /invalid/path");
     }
@@ -136,7 +163,7 @@ mod tests {
         let io_error = io::Error::new(io::ErrorKind::Other, "test error");
         let find_error: FindError = io_error.into();
         match find_error {
-            FindError::FilesystemError(_, path) => assert_eq!(path, PathBuf::new()),
+            FindError::FilesystemError { source: _, path } => assert_eq!(path, PathBuf::new()),
             _ => panic!("Expected FilesystemError variant"),
         }
     }
