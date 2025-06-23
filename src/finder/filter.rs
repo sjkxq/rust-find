@@ -1,26 +1,45 @@
-//! File filtering functionality
+//! 文件过滤功能模块
 //!
-//! This module provides filters for matching files based on various criteria.
+//! 提供基于多种条件匹配文件的过滤器，包括：
+//! - 文件名模式匹配
+//! - 文件类型过滤
+//! - 路径格式控制
 
 use walkdir::DirEntry;
 use glob::Pattern;
 
 use crate::errors::{FindError, FindResult};
 
-/// Trait for file filters
+/// 文件过滤器trait
+///
+/// 定义所有文件过滤器必须实现的方法
 pub trait FileFilter {
-    /// Check if the entry matches the filter
+    /// 检查条目是否匹配过滤器
+    ///
+    /// # 参数
+    /// - `entry`: 待检查的目录条目
     fn matches(&self, entry: &DirEntry) -> bool;
     
-    /// Get the filter description
+    /// 获取过滤器描述
+    ///
+    /// 用于生成用户友好的过滤器描述信息
     fn description(&self) -> String;
 }
 
-/// Factory for creating filters from command line arguments
+/// 过滤器工厂，用于从命令行参数创建过滤器
 pub struct FilterFactory;
 
 impl FilterFactory {
-    /// Create filters from command line arguments
+    /// 根据命令行参数创建过滤器集合
+    ///
+    /// # 参数
+    /// - `name_patterns`: 文件名模式列表
+    /// - `ignore_case`: 是否忽略大小写
+    /// - `absolute_path`: 是否输出绝对路径
+    /// - `relative_path`: 是否输出相对路径
+    ///
+    /// # 返回值
+    /// 返回配置好的过滤器集合
     pub fn create_filters(
         name_patterns: Option<&[String]>,
         ignore_case: bool,
@@ -48,7 +67,17 @@ impl FilterFactory {
     }
 }
 
-/// Filter for matching file names against a pattern
+/// 文件名模式过滤器
+///
+/// 根据文件名模式(支持glob语法)过滤文件
+///
+/// # 示例
+/// ```
+/// use rust_find::finder::filter::NameFilter;
+///
+/// // 创建大小写敏感的过滤器
+/// let filter = NameFilter::new("*.rs").unwrap();
+/// ```
 pub struct NameFilter {
     pattern: Pattern,
     original_pattern: String,
@@ -56,7 +85,13 @@ pub struct NameFilter {
 }
 
 impl NameFilter {
-    /// Create a new NameFilter with the given pattern
+    /// 创建新的文件名过滤器(大小写敏感)
+    ///
+    /// # 参数
+    /// - `pattern`: 文件名模式(支持glob语法)
+    ///
+    /// # 错误
+    /// 如果模式无效，返回PatternError错误
     pub fn new(pattern: &str) -> FindResult<Self> {
         let compiled_pattern = Pattern::new(pattern)
             .map_err(|e| FindError::PatternError {
@@ -70,7 +105,18 @@ impl NameFilter {
         })
     }
     
-    /// Create a new case-insensitive NameFilter
+    /// 创建新的文件名过滤器(忽略大小写)
+    ///
+    /// # 参数
+    /// - `pattern`: 文件名模式(支持glob语法)
+    ///
+    /// # 示例
+    /// ```
+    /// use rust_find::finder::filter::NameFilter;
+    ///
+    /// // 创建忽略大小写的过滤器
+    /// let filter = NameFilter::new_ignore_case("*.RS").unwrap();
+    /// ```
     pub fn new_ignore_case(pattern: &str) -> FindResult<Self> {
         let mut filter = Self::new(pattern)?;
         filter.ignore_case = true;
@@ -105,14 +151,31 @@ impl FileFilter for NameFilter {
     }
 }
 
-/// Filter for matching file names against multiple patterns
+/// 多模式文件名过滤器
+///
+/// 支持同时匹配多个文件名模式，可以使用AND或OR逻辑
+///
+/// # 示例
+/// ```
+/// use rust_find::finder::filter::MultiNameFilter;
+///
+/// // 创建匹配多个模式的过滤器
+/// let filter = MultiNameFilter::new(&["*.rs".to_string(), "*.txt".to_string()], false).unwrap();
+/// ```
 pub struct MultiNameFilter {
     patterns: Vec<NameFilter>,
     any_match: bool,
 }
 
 impl MultiNameFilter {
-    /// Create a new MultiNameFilter with the given patterns
+    /// 创建新的多模式文件名过滤器
+    ///
+    /// # 参数
+    /// - `patterns`: 文件名模式列表
+    /// - `ignore_case`: 是否忽略大小写
+    ///
+    /// # 错误
+    /// 如果任何模式无效，返回PatternError错误
     pub fn new(patterns: &[String], ignore_case: bool) -> FindResult<Self> {
         let mut name_filters = Vec::new();
         
@@ -131,8 +194,22 @@ impl MultiNameFilter {
         })
     }
     
-    /// Set whether any pattern match is sufficient (OR logic)
-    /// or all patterns must match (AND logic)
+    /// 设置模式匹配逻辑
+    ///
+    /// # 参数
+    /// - `any_match`: 
+    ///   - true: 任一模式匹配即可（OR逻辑）
+    ///   - false: 所有模式都必须匹配（AND逻辑）
+    ///
+    /// # 示例
+    /// ```
+    /// use rust_find::finder::filter::MultiNameFilter;
+    ///
+    /// // 创建OR逻辑的多模式过滤器
+    /// let filter = MultiNameFilter::new(&["*.rs".to_string(), "*.txt".to_string()], false)
+    ///     .unwrap()
+    ///     .with_any_match(true);
+    /// ```
     pub fn with_any_match(mut self, any_match: bool) -> Self {
         self.any_match = any_match;
         self
@@ -140,49 +217,64 @@ impl MultiNameFilter {
 }
 
 impl FileFilter for MultiNameFilter {
+    /// 检查文件是否匹配任一/所有模式
     fn matches(&self, entry: &DirEntry) -> bool {
         if self.patterns.is_empty() {
             return true;
         }
         
         if self.any_match {
-            // OR logic - any pattern can match
+            // OR逻辑 - 任一模式匹配即可
             self.patterns.iter().any(|filter| filter.matches(entry))
         } else {
-            // AND logic - all patterns must match
+            // AND逻辑 - 所有模式都必须匹配
             self.patterns.iter().all(|filter| filter.matches(entry))
         }
     }
     
+    /// 获取过滤器的描述信息
     fn description(&self) -> String {
         let patterns: Vec<String> = self.patterns
             .iter()
             .map(|p| p.original_pattern.clone())
             .collect();
         
-        let logic = if self.any_match { "any of" } else { "all of" };
-        format!("name matches {} [{}]", logic, patterns.join(", "))
+        let logic = if self.any_match { "任一" } else { "所有" };
+        format!("文件名匹配{}模式 [{}]", logic, patterns.join(", "))
     }
 }
 
-/// Filter for matching file types
+/// 文件类型过滤器
+///
+/// 用于根据文件类型（普通文件、目录、符号链接）过滤文件
 pub struct TypeFilter {
     file_type: FileType,
 }
 
-/// Supported file types
+/// 支持的文件类型
+///
+/// 定义了系统支持的基本文件类型
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FileType {
-    /// Regular file
+    /// 普通文件
     File,
-    /// Directory
+    /// 目录
     Directory,
-    /// Symbolic link
+    /// 符号链接
     SymbolicLink,
 }
 
 impl TypeFilter {
-    /// Create a new TypeFilter with the given type code
+    /// 创建新的文件类型过滤器
+    ///
+    /// # 参数
+    /// - `type_code`: 文件类型代码
+    ///   - "f": 普通文件
+    ///   - "d": 目录
+    ///   - "l": 符号链接
+    ///
+    /// # 错误
+    /// 如果类型代码无效，返回InvalidFileType错误
     pub fn new(type_code: &str) -> Result<Self, FindError> {
         let file_type = match type_code {
             "f" => FileType::File,

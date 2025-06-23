@@ -1,27 +1,47 @@
-//! Options for file finding
+//! 文件查找配置选项
 //!
-//! This module provides options for configuring the file finding process.
+//! 提供用于配置文件查找过程的选项，包括：
+//! - 搜索深度控制
+//! - 符号链接处理
+//! - 错误处理策略
 
 use crate::cli::Cli;
 
-/// Options for configuring the file finding process
+/// 文件查找配置选项
+///
+/// 用于配置文件查找过程的各种参数，支持链式调用配置。
+///
+/// # 示例
+/// ```
+/// use rust_find::finder::options::FindOptions;
+///
+/// let options = FindOptions::new()
+///     .with_max_depth(Some(5))
+///     .with_follow_links(true);
+/// ```
 #[derive(Debug, Clone)]
 pub struct FindOptions {
-    /// Maximum depth to search
+    /// 最大搜索深度，None表示不限制
     pub max_depth: Option<usize>,
     
-    /// Whether to follow symbolic links
+    /// 是否跟随符号链接，默认为false
     pub follow_links: bool,
     
-    /// Whether to ignore permission errors
+    /// 是否忽略权限错误，默认为true
     pub ignore_permission_errors: bool,
     
-    /// Whether to ignore I/O errors
+    /// 是否忽略I/O错误，默认为false
     pub ignore_io_errors: bool,
 }
 
 impl FindOptions {
-    /// Create a new FindOptions with default values
+    /// 创建新的配置选项实例，使用默认值
+    ///
+    /// 默认值：
+    /// - max_depth: None (不限制深度)
+    /// - follow_links: false
+    /// - ignore_permission_errors: true
+    /// - ignore_io_errors: false
     pub fn new() -> Self {
         Self {
             max_depth: None,
@@ -31,31 +51,46 @@ impl FindOptions {
         }
     }
     
-    /// Set the maximum depth to search
+    /// 设置最大搜索深度
+    ///
+    /// # 参数
+    /// - `max_depth`: 最大深度值，None表示不限制
     pub fn with_max_depth(mut self, max_depth: Option<usize>) -> Self {
         self.max_depth = max_depth;
         self
     }
     
-    /// Set whether to follow symbolic links
+    /// 设置是否跟随符号链接
+    ///
+    /// # 参数
+    /// - `follow_links`: true表示跟随符号链接
     pub fn with_follow_links(mut self, follow_links: bool) -> Self {
         self.follow_links = follow_links;
         self
     }
     
-    /// Set whether to ignore permission errors
+    /// 设置是否忽略权限错误
+    ///
+    /// # 参数
+    /// - `ignore`: true表示忽略权限错误
     pub fn with_ignore_permission_errors(mut self, ignore: bool) -> Self {
         self.ignore_permission_errors = ignore;
         self
     }
     
-    /// Set whether to ignore I/O errors
+    /// 设置是否忽略I/O错误
+    ///
+    /// # 参数
+    /// - `ignore`: true表示忽略I/O错误
     pub fn with_ignore_io_errors(mut self, ignore: bool) -> Self {
         self.ignore_io_errors = ignore;
         self
     }
     
-    /// Create FindOptions from CLI arguments
+    /// 从命令行参数创建配置选项
+    ///
+    /// # 参数
+    /// - `cli`: 命令行参数解析结果
     pub fn from_cli(cli: &Cli) -> Self {
         Self::new()
             .with_max_depth(cli.max_depth)

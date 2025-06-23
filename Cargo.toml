@@ -3,7 +3,15 @@ name = "rust-find"
 version = "0.1.0"
 edition = "2021"
 authors = ["Your Name <your.email@example.com>"]
-description = "A Rust implementation of the Linux find command"
+description = """
+A high-performance, parallel implementation of the Linux find command in Rust.
+
+Features:
+- Multi-threaded directory traversal using Rayon
+- Support for name pattern matching with glob
+- Flexible filtering by file attributes
+- Detailed error reporting
+"""
 license = "MIT"
 repository = "https://github.com/yourusername/rust-find"
 

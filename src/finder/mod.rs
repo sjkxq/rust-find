@@ -1,7 +1,9 @@
-//! File finding functionality
+//! 文件查找功能模块
 //!
-//! This module provides the core functionality for finding files and directories
-//! based on various criteria.
+//! 提供基于多种条件查找文件和目录的核心功能，包括：
+//! - 单线程和并行查找
+//! - 多种过滤条件组合
+//! - 可定制的搜索选项
 
 pub mod filter;
 pub mod options;
@@ -16,14 +18,29 @@ use self::filter::FileFilter;
 use self::options::FindOptions;
 use self::walker::{FileWalker, FileWalkerIterator};
 
-/// Main finder struct that coordinates the search process
+/// 文件查找器，负责协调整个搜索过程
+///
+/// # 示例
+/// ```
+/// use rust_find::finder::{Finder, options::FindOptions};
+/// use rust_find::finder::filter::NameFilter;
+///
+/// let options = FindOptions::new().with_max_depth(Some(3));
+/// let name_filter = NameFilter::new("*.rs").unwrap();
+///
+/// let finder = Finder::new(options).with_filter(Box::new(name_filter));
+/// let results = finder.find(".").unwrap();
+/// ```
 pub struct Finder {
     options: FindOptions,
     filters: Vec<Box<dyn FileFilter + Send + Sync>>,
 }
 
 impl Finder {
-    /// Create a new Finder with the given options
+    /// 创建新的查找器实例
+    ///
+    /// # 参数
+    /// - `options`: 查找选项配置
     pub fn new(options: FindOptions) -> Self {
         Self {
             options,
@@ -31,13 +48,25 @@ impl Finder {
         }
     }
     
-    /// Add a filter to the finder
+    /// 添加过滤器到查找器
+    ///
+    /// # 参数
+    /// - `filter`: 文件过滤器，需实现FileFilter trait
+    ///
+    /// # 返回值
+    /// 返回修改后的Finder实例，支持链式调用
     pub fn with_filter(mut self, filter: Box<dyn FileFilter + Send + Sync>) -> Self {
         self.filters.push(filter);
         self
     }
     
-    /// Find files and directories matching the criteria
+    /// 查找匹配条件的文件和目录（单线程）
+    ///
+    /// # 参数
+    /// - `path`: 搜索起始路径
+    ///
+    /// # 返回值
+    /// 返回匹配的目录条目列表
     pub fn find<P: AsRef<Path>>(&self, path: P) -> FindResult<Vec<DirEntry>> {
         let walker = FileWalker::new(&self.options);
         let entries = walker.walk(path)?;
