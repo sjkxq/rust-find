@@ -53,30 +53,30 @@ impl fmt::Display for FindError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             FindError::FileNotFound(path) => 
-                write!(f, "File not found: {}", path.display()),
+                write!(f, "文件未找到: {}", path.display()),
             FindError::PermissionDenied(path) => 
-                write!(f, "Permission denied for: {}", path.display()),
+                write!(f, "权限不足: {}", path.display()),
             FindError::DirectoryUnreadable(path) => 
-                write!(f, "Cannot read directory: {}", path.display()),
+                write!(f, "目录不可读: {}", path.display()),
             FindError::SymlinkIssue(path) => 
-                write!(f, "Symbolic link issue with: {}", path.display()),
+                write!(f, "符号链接问题: {}", path.display()),
             FindError::FilesystemError { source, path } => 
-                write!(f, "Filesystem error at {}: {}", path.display(), source),
+                write!(f, "文件系统错误 {}: {}", path.display(), source),
             FindError::InvalidPath(path) => 
-                write!(f, "Invalid path: {}", path.display()),
+                write!(f, "无效路径: {}", path.display()),
             FindError::Other { message, context, .. } => {
-                write!(f, "Error: {}", message)?;
+                write!(f, "错误: {}", message)?;
                 if let Some(ctx) = context {
-                    write!(f, " (context: {})", ctx)?;
+                    write!(f, " (上下文: {})", ctx)?;
                 }
                 Ok(())
             },
             FindError::PatternError { message } => 
-                write!(f, "Pattern error: {}", message),
+                write!(f, "模式匹配错误: {}", message),
             FindError::InvalidFileType(type_code) => 
-                write!(f, "Invalid file type: {}", type_code),
+                write!(f, "无效的文件类型: {}", type_code),
             FindError::WalkDirError(message) => 
-                write!(f, "Directory traversal error: {}", message)
+                write!(f, "目录遍历错误: {}", message)
         }
     }
 }
@@ -137,7 +137,7 @@ mod tests {
         };
         assert_eq!(
             find_error.to_string(),
-            "Filesystem error at /test/path: file not found"
+            "文件系统错误 /test/path: file not found"
         );
     }
 
@@ -145,17 +145,17 @@ mod tests {
     fn test_invalid_path_display() {
         // 测试无效路径错误的显示格式
         let find_error = FindError::InvalidPath(PathBuf::from("/invalid/path"));
-        assert_eq!(find_error.to_string(), "Invalid path: /invalid/path");
+        assert_eq!(find_error.to_string(), "无效路径: /invalid/path");
     }
 
     #[test]
     fn test_other_error_display() {
         let find_error = FindError::Other {
-            message: "something went wrong".to_string(),
+            message: "出现了问题".to_string(),
             context: None,
             timestamp: SystemTime::now(),
         };
-        assert_eq!(find_error.to_string(), "Error: something went wrong");
+        assert_eq!(find_error.to_string(), "错误: 出现了问题");
     }
 
     #[test]

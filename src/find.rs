@@ -43,7 +43,7 @@ impl FindOptions {
     }
 }
 
-/// Find files matching given criteria
+/// 查找符合给定条件的文件
 pub fn find_files<P: AsRef<Path>>(
     path: P,
     options: &FindOptions,
@@ -57,8 +57,8 @@ pub fn find_files<P: AsRef<Path>>(
 
     if !path.is_dir() {
         return Err(FindError::Other {
-            message: format!("Path is not a directory: {}", path.display()),
-            context: Some("Expected a directory for searching".to_string()),
+                                message: format!("路径不是一个目录: {}", path.display()),
+            context: Some("搜索需要一个目录".to_string()),
             timestamp: SystemTime::now(),
         });
     }
@@ -102,7 +102,7 @@ pub fn find_files<P: AsRef<Path>>(
     Ok(results)
 }
 
-/// Parallel directory traversal implementation
+/// 并行目录遍历实现
 fn parallel_traverse_directory(
     path: &Path,
     options: Arc<FindOptions>,
@@ -135,7 +135,7 @@ fn parallel_traverse_directory(
     Ok(results)
 }
 
-/// Parallel traversal implementation
+/// 并行遍历实现
 fn parallel_traverse_impl(
     path: &Path,
     current_depth: usize,
@@ -189,7 +189,7 @@ fn parallel_traverse_impl(
     Ok(())
 }
 
-/// Recursively traverse directory
+/// 递归遍历目录
 fn traverse_directory(
     path: &Path,
     current_depth: usize,
@@ -209,15 +209,15 @@ fn traverse_directory(
                 Err(e) => {
                     let error = match e.kind() {
                         std::io::ErrorKind::PermissionDenied => {
-                            warn!("Permission denied reading directory: {}", path.display());
+                            warn!("没有权限读取目录: {}", path.display());
                             FindError::PermissionDenied(path.to_path_buf())
                         }
                         std::io::ErrorKind::NotFound => {
-                            warn!("Directory not found: {}", path.display());
+                            warn!("目录未找到: {}", path.display());
                             FindError::FileNotFound(path.to_path_buf())
                         }
                         _ => {
-                            error!("Error reading directory {}: {}", path.display(), e);
+                            error!("读取目录时出错 {}: {}", path.display(), e);
                             FindError::FilesystemError(e, path.to_path_buf())
                         }
                     };
@@ -231,15 +231,15 @@ fn traverse_directory(
                     Err(e) => {
                         match e.kind() {
                             std::io::ErrorKind::PermissionDenied => {
-                                warn!("Skipping entry (permission denied) in {}: {}", path.display(), e);
+                                warn!("跳过条目(权限被拒绝)在 {}: {}", path.display(), e);
                                 continue;
                             }
                             std::io::ErrorKind::NotFound => {
-                                warn!("Skipping missing entry in {}: {}", path.display(), e);
+                                warn!("跳过 {} 中的缺失条目: {}", path.display(), e);
                                 continue;
                             }
                             _ => {
-                                error!("Error reading directory entry in {}: {}", path.display(), e);
+                                error!("读取目录 {} 中的条目时出错: {}", path.display(), e);
                                 continue;
                             }
                         };
@@ -277,17 +277,17 @@ fn traverse_directory(
         // Handle directories
         if path.is_dir() {
             if is_symlink(&path) {
-                debug!("Found symlink: {}", path.display());
+                debug!("发现符号链接: {}", path.display());
                 if options.follow_links {
-                    debug!("Following symlink: {}", path.display());
+                    debug!("正在跟随符号链接: {}", path.display());
                     if let Err(e) = traverse_directory(&path, current_depth + 1, options, results) {
-                        error!("Error following symlink {}: {}", path.display(), e);
+                        error!("跟随符号链接时出错 {}: {}", path.display(), e);
                     }
                 }
             } else {
                 // Regular directory
                 if let Err(e) = traverse_directory(&path, current_depth + 1, options, results) {
-                    error!("Error traversing {}: {}", path.display(), e);
+                                            error!("遍历目录时出错 {}: {}", path.display(), e);
                 }
             }
         }
@@ -296,7 +296,7 @@ fn traverse_directory(
     Ok(())
 }
 
-/// Check if path is a symbolic link
+/// 检查路径是否为符号链接
 fn is_symlink<P: AsRef<Path>>(path: P) -> bool {
     path.as_ref().symlink_metadata()
         .map(|m| m.file_type().is_symlink())

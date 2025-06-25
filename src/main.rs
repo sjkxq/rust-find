@@ -1,11 +1,12 @@
 use std::time::Instant;
-use anyhow::{Context, Result};
+use anyhow::{Result, Context};
+use rust_find::finder::filter::FileFilter;
+use walkdir::DirEntry;
 use log::{info, debug};
 use clap::Parser;
 
 use rust_find::cli::Cli;
-use rust_find::finder::{Finder};
-use rust_find::finder::filter::FilterFactory;
+use rust_find::finder::{Finder, filter::NameFilter};
 
 fn main() -> Result<()> {
     // 解析命令行参数
@@ -20,12 +21,12 @@ fn main() -> Result<()> {
         })
         .init();
 
-    info!("Starting rust-find");
+    info!("开始运行 rust-find");
     let start_time = Instant::now();
 
     // 为每个指定的路径执行搜索
     for path in &cli.paths {
-        debug!("Searching in path: {}", path);
+        debug!("在路径中搜索: {}", path);
 
         // 创建查找选项
         let options = cli.build_options();
@@ -40,34 +41,49 @@ fn main() -> Result<()> {
             &empty_vec
         };
 
-        let filters = FilterFactory::create_filters(
-            Some(name_patterns),
-            cli.ignore_case(),
-            cli.absolute,
-            cli.relative,
-        ).with_context(|| "Failed to create filters")?;
+        // 创建名称过滤器
+        let name_filter = if !name_patterns.is_empty() {
+            Some(NameFilter::new(&name_patterns[0])
+                .with_context(|| "创建名称过滤器失败")?)
+        } else {
+            None
+        };
 
         // 创建查找器并添加过滤器
-        let mut finder = Finder::new(options);
-        for filter in filters {
-            finder = finder.with_filter(filter);
-        }
+        let finder = Finder::new(options);
+        let finder = if let Some(filter) = name_filter {
+            finder.with_filter(filter)
+        } else {
+            finder
+        };
 
         // 执行搜索
+        struct AlwaysTrueFilter;
+        impl FileFilter for AlwaysTrueFilter {
+            fn matches(&self, _: &DirEntry) -> bool {
+                true
+            }
+
+            fn description(&self) -> String {
+                "始终匹配所有文件".to_string()
+            }
+        }
+
+        let filter = AlwaysTrueFilter;
         let results = if cli.parallel {
-            finder.find_parallel(path)
+            finder.find_parallel(std::path::PathBuf::from(path), filter)
         } else {
-            finder.find(path)
-        }.with_context(|| format!("Failed to search in path: {}", path))?;
+            finder.find(std::path::PathBuf::from(path), filter)
+        };
 
         // 打印结果
         for entry in results {
-            println!("{}", entry.path().display());
+            println!("{}", entry.as_path().display());
         }
     }
 
     let elapsed = start_time.elapsed();
-    info!("Search completed in {:.2?}", elapsed);
+    info!("搜索完成，耗时 {:.2?}", elapsed);
 
     Ok(())
 }

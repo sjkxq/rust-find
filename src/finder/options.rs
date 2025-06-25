@@ -32,6 +32,21 @@ pub struct FindOptions {
     
     /// 是否忽略I/O错误，默认为false
     pub ignore_io_errors: bool,
+    
+    /// 是否忽略隐藏文件，默认为true
+    pub ignore_hidden: bool,
+    
+    /// 线程池最大线程数，默认为CPU核心数
+    pub max_threads: usize,
+    
+    /// 线程池最小线程数，默认为1
+    pub min_threads: usize,
+    
+    /// 每个线程处理的目录数，默认为10
+    pub dirs_per_thread: usize,
+    
+    /// 是否自动调整线程数，默认为true
+    pub auto_adjust: bool,
 }
 
 impl FindOptions {
@@ -43,11 +58,17 @@ impl FindOptions {
     /// - ignore_permission_errors: true
     /// - ignore_io_errors: false
     pub fn new() -> Self {
+        let num_cpus = num_cpus::get();
         Self {
             max_depth: None,
             follow_links: false,
             ignore_permission_errors: true,
             ignore_io_errors: false,
+            ignore_hidden: true,
+            max_threads: num_cpus,
+            min_threads: 1,
+            dirs_per_thread: 10,
+            auto_adjust: true,
         }
     }
     
@@ -87,6 +108,51 @@ impl FindOptions {
         self
     }
     
+    /// 设置是否忽略隐藏文件
+    ///
+    /// # 参数
+    /// - `ignore`: true表示忽略隐藏文件
+    pub fn with_ignore_hidden(mut self, ignore: bool) -> Self {
+        self.ignore_hidden = ignore;
+        self
+    }
+    
+    /// 设置线程池最大线程数
+    ///
+    /// # 参数
+    /// - `max`: 最大线程数
+    pub fn with_max_threads(mut self, max: usize) -> Self {
+        self.max_threads = max;
+        self
+    }
+    
+    /// 设置线程池最小线程数
+    ///
+    /// # 参数
+    /// - `min`: 最小线程数
+    pub fn with_min_threads(mut self, min: usize) -> Self {
+        self.min_threads = min;
+        self
+    }
+    
+    /// 设置每个线程处理的目录数
+    ///
+    /// # 参数
+    /// - `count`: 每个线程处理的目录数
+    pub fn with_dirs_per_thread(mut self, count: usize) -> Self {
+        self.dirs_per_thread = count;
+        self
+    }
+    
+    /// 设置是否自动调整线程数
+    ///
+    /// # 参数
+    /// - `adjust`: true表示自动调整线程数
+    pub fn with_auto_adjust(mut self, adjust: bool) -> Self {
+        self.auto_adjust = adjust;
+        self
+    }
+    
     /// 从命令行参数创建配置选项
     ///
     /// # 参数
@@ -95,6 +161,13 @@ impl FindOptions {
         Self::new()
             .with_max_depth(cli.max_depth)
             .with_follow_links(cli.follow_links)
+            .with_ignore_permission_errors(cli.ignore_permission_errors)
+            .with_ignore_io_errors(cli.ignore_io_errors)
+            .with_ignore_hidden(!cli.no_ignore_hidden)
+            .with_max_threads(cli.max_threads.unwrap_or(num_cpus::get()))
+            .with_min_threads(cli.min_threads.unwrap_or(1))
+            .with_dirs_per_thread(cli.dirs_per_thread.unwrap_or(10))
+            .with_auto_adjust(!cli.no_auto_adjust)
     }
 }
 

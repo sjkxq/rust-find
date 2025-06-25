@@ -18,24 +18,24 @@
 //! ```no_run
 //! use rust_find::finder::{Finder, options::FindOptions};
 //! use rust_find::finder::filter::{NameFilter, TypeFilter, FileFilter};
+//! use std::path::PathBuf;
 //!
 //! // 创建查找器并设置选项
 //! let options = FindOptions::new()
 //!     .with_max_depth(Some(3))  // 最大搜索深度
 //!     .with_follow_links(false); // 不跟随符号链接
 //!
-//! let mut finder = Finder::new(options);
+//! let finder = Finder::new(options);
 //!
-//! // 添加名称过滤器
+//! // 创建名称过滤器
 //! let name_filter = NameFilter::new("*.rs").unwrap();
-//! finder = finder.with_filter(Box::new(name_filter));
 //!
 //! // 执行查找
-//! let results = finder.find(".").unwrap();
+//! let results = finder.find(PathBuf::from("."), name_filter);
 //!
 //! // 输出结果
-//! for entry in results {
-//!     println!("找到文件: {}", entry.path().display());
+//! for path in results {
+//!     println!("找到文件: {}", path.display());
 //! }
 //! ```
 //!

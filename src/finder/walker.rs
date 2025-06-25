@@ -1,7 +1,6 @@
-//! File system traversal functionality
+//! 文件系统遍历功能
 //!
-//! This module provides the functionality for traversing the file system
-//! and collecting file entries.
+//! 本模块提供遍历文件系统并收集文件条目的功能。
 
 use std::path::Path;
 use walkdir::{DirEntry, WalkDir};
@@ -9,74 +8,92 @@ use walkdir::{DirEntry, WalkDir};
 use crate::errors::{FindError, FindResult};
 use super::options::FindOptions;
 
-/// Handles file system traversal with the given options
+/// 使用给定选项处理文件系统遍历
 pub struct FileWalker<'a> {
     options: &'a FindOptions,
 }
 
 impl<'a> FileWalker<'a> {
-    /// Create a new FileWalker with the given options
+    /// 使用给定选项创建新的 FileWalker
     pub fn new(options: &'a FindOptions) -> Self {
         Self { options }
     }
     
-    /// Walk the file system starting from the given path
+    /// 从给定路径开始遍历文件系统
     pub fn walk<P: AsRef<Path>>(&self, path: P) -> FindResult<Vec<DirEntry>> {
-        let mut walker = WalkDir::new(path)
-            .follow_links(self.options.follow_links);
-        
-        // Apply max depth if specified
-        if let Some(depth) = self.options.max_depth {
-            walker = walker.max_depth(depth);
-        }
-        
+        let walker = self.init_walker(path.as_ref());
         let mut entries = Vec::new();
         let mut is_first = true;
         
         for entry in walker {
-            match entry {
-                Ok(entry) => {
-                    if !is_first {
-                        entries.push(entry);
+            let entry = self.process_entry(entry, &mut is_first)?;
+            if let Some(entry) = entry {
+                entries.push(entry);
+            }
+        }
+        
+        Ok(entries)
+    }
+
+    /// 使用配置的选项初始化目录遍历器
+    fn init_walker(&self, path: &Path) -> walkdir::WalkDir {
+        let mut walker = WalkDir::new(path)
+            .follow_links(self.options.follow_links);
+        
+        if let Some(depth) = self.options.max_depth {
+            walker = walker.max_depth(depth);
+        }
+        
+        walker
+    }
+
+    /// 处理单个目录条目
+    fn process_entry(
+        &self,
+        entry: Result<DirEntry, walkdir::Error>,
+        is_first: &mut bool,
+    ) -> FindResult<Option<DirEntry>> {
+        match entry {
+            Ok(entry) => {
+                let should_include = !*is_first;
+                *is_first = false;
+                Ok(if should_include { Some(entry) } else { None })
+            }
+            Err(err) => self.handle_walk_error(err),
+        }
+    }
+
+    /// 根据选项处理目录遍历错误
+    fn handle_walk_error(&self, err: walkdir::Error) -> FindResult<Option<DirEntry>> {
+        if let Some(path) = err.path() {
+            if let Some(io_err) = err.io_error() {
+                match io_err.kind() {
+                    std::io::ErrorKind::PermissionDenied => {
+                        if !self.options.ignore_permission_errors {
+                            return Err(FindError::PermissionDenied(path.to_path_buf()));
+                        }
                     }
-                    is_first = false;
-                }
-                Err(err) => {
-                    // Handle different error types based on options
-                    if let Some(path) = err.path() {
-                        match err.io_error() {
-                            Some(io_err) => {
-                                match io_err.kind() {
-                                    std::io::ErrorKind::PermissionDenied => {
-                                        if !self.options.ignore_permission_errors {
-                                            return Err(FindError::PermissionDenied(path.to_path_buf()));
-                                        }
-                                    }
-                                    _ => {
-                                        if !self.options.ignore_io_errors {
-                                            return Err(FindError::FilesystemError {
-                                                source: std::io::Error::new(io_err.kind(), io_err.to_string()),
-                                                path: path.to_path_buf(),
-                                            });
-                                        }
-                                    }
-                                }
-                            }
-                            None => {
-                                // Other walkdir errors
-                                return Err(FindError::WalkDirError(err.to_string()));
-                            }
+                    _ => {
+                        if !self.options.ignore_io_errors {
+                            return Err(FindError::FilesystemError {
+                                source: std::io::Error::new(io_err.kind(), io_err.to_string()),
+                                path: path.to_path_buf(),
+                            });
                         }
                     }
                 }
             }
         }
         
-        Ok(entries)
+        if !self.options.ignore_io_errors {
+            return Err(FindError::WalkDirError(err.to_string()));
+        }
+        
+        Ok(None)
     }
 }
 
-/// Iterator-based file system walker
+/// 基于迭代器的文件系统遍历器
 pub struct FileWalkerIterator<'a> {
     inner: walkdir::IntoIter,
     options: &'a FindOptions,
@@ -85,7 +102,7 @@ pub struct FileWalkerIterator<'a> {
 }
 
 impl<'a> FileWalkerIterator<'a> {
-    /// Create a new FileWalkerIterator with the given path and options
+    /// 使用给定路径和选项创建新的 FileWalkerIterator
     pub fn new<P: AsRef<Path>>(path: P, options: &'a FindOptions) -> Self {
         let root_path = path.as_ref().to_path_buf();
         let mut walker = WalkDir::new(&root_path)
@@ -111,47 +128,60 @@ impl<'a> Iterator for FileWalkerIterator<'a> {
         loop {
             match self.inner.next()? {
                 Ok(entry) => {
-                    // Skip the root directory entry
-                    if !self.skip_root {
-                        self.skip_root = true;
-                        if entry.path() == self.root_path {
-                            continue;
-                        }
+                    if let Some(entry) = self.process_entry(entry) {
+                        return Some(Ok(entry));
                     }
-                    return Some(Ok(entry));
                 },
                 Err(err) => {
-                    // Handle errors based on options
-                    if let Some(path) = err.path() {
-                        if let Some(io_err) = err.io_error() {
-                            match io_err.kind() {
-                                std::io::ErrorKind::PermissionDenied => {
-                                    if self.options.ignore_permission_errors {
-                                        continue;
-                                    }
-                                    return Some(Err(FindError::PermissionDenied(path.to_path_buf())));
-                                }
-                                _ => {
-                                    if self.options.ignore_io_errors {
-                                        eprintln!("Warning: {}", err);
-                                        continue;
-                                    }
-                                    return Some(Err(FindError::FilesystemError {
-                                        source: std::io::Error::new(io_err.kind(), io_err.to_string()),
-                                        path: path.to_path_buf(),
-                                    }));
-                                }
-                            }
-                        }
+                    if let Some(result) = self.handle_error(err) {
+                        return Some(result);
                     }
-                    if self.options.ignore_io_errors {
-                        eprintln!("Warning: {}", err);
-                        continue;
-                    }
-                    return Some(Err(FindError::WalkDirError(err.to_string())));
                 }
             }
         }
+    }
+}
+
+impl<'a> FileWalkerIterator<'a> {
+    /// 处理目录条目，根据需要跳过根目录
+    fn process_entry(&mut self, entry: DirEntry) -> Option<DirEntry> {
+        if !self.skip_root {
+            self.skip_root = true;
+            if entry.path() == self.root_path {
+                return None;
+            }
+        }
+        Some(entry)
+    }
+
+    /// 根据选项处理目录遍历错误
+    fn handle_error(&self, err: walkdir::Error) -> Option<FindResult<DirEntry>> {
+        if let Some(path) = err.path() {
+            if let Some(io_err) = err.io_error() {
+                match io_err.kind() {
+                    std::io::ErrorKind::PermissionDenied => {
+                        if !self.options.ignore_permission_errors {
+                            return Some(Err(FindError::PermissionDenied(path.to_path_buf())));
+                        }
+                    }
+                    _ => {
+                        if !self.options.ignore_io_errors {
+                            return Some(Err(FindError::FilesystemError {
+                                source: std::io::Error::new(io_err.kind(), io_err.to_string()),
+                                path: path.to_path_buf(),
+                            }));
+                        }
+                    }
+                }
+            }
+        }
+
+        if !self.options.ignore_io_errors {
+            return Some(Err(FindError::WalkDirError(err.to_string())));
+        }
+
+        eprintln!("Warning: {}", err);
+        None
     }
 }
 

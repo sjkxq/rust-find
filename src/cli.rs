@@ -5,7 +5,7 @@
 
 use clap::Parser;
 use crate::errors::FindError;
-use crate::finder::options::FindOptions;
+use crate::finder::FindOptions;
 
 /// Linux find 命令的 Rust 实现
 #[derive(Parser, Debug)]
@@ -54,6 +54,26 @@ pub struct Cli {
     /// 忽略权限错误
     #[arg(long)]
     pub ignore_permission_errors: bool,
+
+    /// 不忽略隐藏文件（以点开头的文件）
+    #[arg(long)]
+    pub no_ignore_hidden: bool,
+
+    /// 最大线程数（并行搜索时）
+    #[arg(long, value_name = "NUM")]
+    pub max_threads: Option<usize>,
+
+    /// 最小线程数（并行搜索时）
+    #[arg(long, value_name = "NUM")]
+    pub min_threads: Option<usize>,
+
+    /// 每个线程处理的目录数（并行搜索时）
+    #[arg(long, value_name = "NUM")]
+    pub dirs_per_thread: Option<usize>,
+
+    /// 禁用自动调整线程数（并行搜索时）
+    #[arg(long)]
+    pub no_auto_adjust: bool,
 }
 
 impl Cli {
@@ -64,30 +84,48 @@ impl Cli {
             follow_links: self.follow_links,
             ignore_permission_errors: self.ignore_permission_errors,
             ignore_io_errors: self.ignore_io_errors,
+            ignore_hidden: !self.no_ignore_hidden,
+            max_threads: self.max_threads.unwrap_or(num_cpus::get()),
+            min_threads: self.min_threads.unwrap_or(1),
+            dirs_per_thread: self.dirs_per_thread.unwrap_or(10),
+            auto_adjust: !self.no_auto_adjust,
         }
     }
 
     /// 验证命令行参数
     pub fn validate(&self) -> Result<(), FindError> {
-        // 验证路径
+        self.validate_paths()?;
+        self.validate_max_depth()?;
+        self.validate_name_patterns()?;
+        Ok(())
+    }
+
+    /// 验证所有路径是否存在
+    fn validate_paths(&self) -> Result<(), FindError> {
         for path in &self.paths {
             if !std::path::Path::new(path).exists() {
                 return Err(FindError::FileNotFound(std::path::PathBuf::from(path)));
             }
         }
+        Ok(())
+    }
 
-        // 验证最大深度
+    /// 验证最大深度参数
+    fn validate_max_depth(&self) -> Result<(), FindError> {
         if let Some(depth) = self.max_depth {
             if depth == 0 {
                 return Err(FindError::Other {
-                    message: "Maximum depth must be greater than 0".to_string(),
+                    message: "最大深度必须大于0".to_string(),
                     context: None,
                     timestamp: std::time::SystemTime::now(),
                 });
             }
         }
+        Ok(())
+    }
 
-        // 验证名称模式
+    /// 验证名称模式
+    fn validate_name_patterns(&self) -> Result<(), FindError> {
         let patterns = if !self.name.is_empty() {
             &self.name
         } else {
@@ -97,11 +135,10 @@ impl Cli {
         for pattern in patterns {
             if let Err(e) = glob::Pattern::new(pattern) {
                 return Err(FindError::PatternError {
-                    message: format!("Invalid pattern '{}': {}", pattern, e),
+                    message: format!("无效的模式 '{}': {}", pattern, e),
                 });
             }
         }
-
         Ok(())
     }
 
@@ -140,6 +177,11 @@ mod tests {
             parallel: false,
             ignore_io_errors: false,
             ignore_permission_errors: false,
+            no_ignore_hidden: false,
+            max_threads: None,
+            min_threads: None,
+            dirs_per_thread: None,
+            no_auto_adjust: false,
         };
 
         assert!(cli.validate().is_ok());
@@ -159,6 +201,11 @@ mod tests {
             parallel: false,
             ignore_io_errors: false,
             ignore_permission_errors: false,
+            no_ignore_hidden: false,
+            max_threads: None,
+            min_threads: None,
+            dirs_per_thread: None,
+            no_auto_adjust: false,
         };
 
         assert!(cli.validate().is_err());
@@ -178,6 +225,11 @@ mod tests {
             parallel: false,
             ignore_io_errors: false,
             ignore_permission_errors: false,
+            no_ignore_hidden: false,
+            max_threads: None,
+            min_threads: None,
+            dirs_per_thread: None,
+            no_auto_adjust: false,
         };
 
         assert!(cli.validate().is_err());

@@ -124,22 +124,33 @@ impl NameFilter {
     }
 }
 
+impl NameFilter {
+    /// 执行大小写敏感匹配
+    fn matches_case_sensitive(&self, name: &str) -> bool {
+        self.pattern.matches(name)
+    }
+
+    /// 执行大小写不敏感匹配
+    fn matches_case_insensitive(&self, name: &str) -> bool {
+        let name_lower = name.to_lowercase();
+        let pattern_lower = self.original_pattern.to_lowercase();
+        Pattern::new(&pattern_lower)
+            .map(|p| p.matches(&name_lower))
+            .unwrap_or(false)
+    }
+}
+
 impl FileFilter for NameFilter {
     fn matches(&self, entry: &DirEntry) -> bool {
         if let Some(name) = entry.file_name().to_str() {
             if self.ignore_case {
-                // Case-insensitive matching
-                let name_lower = name.to_lowercase();
-                let pattern_lower = self.original_pattern.to_lowercase();
-                return Pattern::new(&pattern_lower)
-                    .map(|p| p.matches(&name_lower))
-                    .unwrap_or(false);
+                self.matches_case_insensitive(name)
             } else {
-                // Case-sensitive matching
-                return self.pattern.matches(name);
+                self.matches_case_sensitive(name)
             }
+        } else {
+            false
         }
-        false
     }
     
     fn description(&self) -> String {
@@ -177,21 +188,39 @@ impl MultiNameFilter {
     /// # 错误
     /// 如果任何模式无效，返回PatternError错误
     pub fn new(patterns: &[String], ignore_case: bool) -> FindResult<Self> {
-        let mut name_filters = Vec::new();
-        
-        for pattern in patterns {
-            let filter = if ignore_case {
-                NameFilter::new_ignore_case(pattern)?
-            } else {
-                NameFilter::new(pattern)?
-            };
-            name_filters.push(filter);
-        }
+        Self::validate_patterns(patterns)?;
+        let patterns = Self::create_filters(patterns, ignore_case)?;
         
         Ok(Self {
-            patterns: name_filters,
+            patterns,
             any_match: true, // Default to OR logic
         })
+    }
+
+    /// 在创建过滤器之前验证所有模式
+    fn validate_patterns(patterns: &[String]) -> FindResult<()> {
+        for pattern in patterns {
+            if pattern.is_empty() {
+                return Err(FindError::PatternError {
+                    message: "Empty pattern is not allowed".to_string(),
+                });
+            }
+        }
+        Ok(())
+    }
+
+    /// 为每个模式创建单独的文件名过滤器
+    fn create_filters(patterns: &[String], ignore_case: bool) -> FindResult<Vec<NameFilter>> {
+        patterns
+            .iter()
+            .map(|pattern| {
+                if ignore_case {
+                    NameFilter::new_ignore_case(pattern)
+                } else {
+                    NameFilter::new(pattern)
+                }
+            })
+            .collect()
     }
     
     /// 设置模式匹配逻辑
@@ -305,11 +334,11 @@ impl FileFilter for TypeFilter {
     }
 }
 
-/// Filter for controlling path format (absolute or relative)
+/// 控制路径格式（绝对或相对）的过滤器
 pub enum PathFormatFilter {
-    /// Output absolute paths
+    /// 输出绝对路径
     Absolute,
-    /// Output relative paths
+    /// 输出相对路径
     Relative,
 }
 
